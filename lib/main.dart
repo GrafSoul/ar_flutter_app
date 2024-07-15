@@ -91,7 +91,7 @@ class _MyHomePageState extends State<MyHomePage> {
         currentPosition.z,
       );
 
-      arkitController.update(sphereNode!.name!, node: ARKitNode(position: newPosition));
+      arkitController.update(sphereNode!.name, node: ARKitNode(position: newPosition));
     }
   }
 }
