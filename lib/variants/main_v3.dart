@@ -35,13 +35,12 @@ class _MyHomePageState extends State<MyHomePage> {
   late ARKitController arkitController;
   ARKitNode? sphereNode;
   double sphereRadius = 0.1;
+  double _previousScale = 1.0;
   final double _minRadius = 0.02;
   final double _maxRadius = 0.5;
-  double _previousScale = 0.5;
   vector.Vector3 spherePosition = vector.Vector3(0, 0, -0.5);
   bool isScalingMode = false;
-  bool isDepthMode = false;
-  double _previousDepth = 0.0;
+  Offset? lastPanPosition;
 
   @override
   void dispose() {
@@ -60,11 +59,9 @@ class _MyHomePageState extends State<MyHomePage> {
           GestureDetector(
             onScaleStart: isScalingMode ? _onScaleStart : null,
             onScaleUpdate: isScalingMode ? _onScaleUpdate : null,
-            onPanStart: !isScalingMode && !isDepthMode ? _onPanStart : null,
-            onPanUpdate: !isScalingMode && !isDepthMode ? _onPanUpdate : null,
-            onPanEnd: !isScalingMode && !isDepthMode ? _onPanEnd : null,
-            onVerticalDragStart: isDepthMode ? _onDepthStart : null,
-            onVerticalDragUpdate: isDepthMode ? _onDepthUpdate : null,
+            onPanStart: !isScalingMode ? _onPanStart : null,
+            onPanUpdate: !isScalingMode ? _onPanUpdate : null,
+            onPanEnd: !isScalingMode ? _onPanEnd : null,
             child: ARKitSceneView(
               onARKitViewCreated: onARKitViewCreated,
             ),
@@ -78,7 +75,6 @@ class _MyHomePageState extends State<MyHomePage> {
                   onPressed: () {
                     setState(() {
                       isScalingMode = true;
-                      isDepthMode = false;
                     });
                   },
                   style: ElevatedButton.styleFrom(
@@ -91,34 +87,12 @@ class _MyHomePageState extends State<MyHomePage> {
                   onPressed: () {
                     setState(() {
                       isScalingMode = false;
-                      isDepthMode = false;
                     });
                   },
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: !isScalingMode && !isDepthMode ? Colors.blue : Colors.grey,
+                    backgroundColor: !isScalingMode ? Colors.blue : Colors.grey,
                   ),
                   child: const Text('Move'),
-                ),
-                const SizedBox(height: 10),
-                ElevatedButton(
-                  onPressed: () {
-                    setState(() {
-                      isDepthMode = true;
-                      isScalingMode = false;
-                    });
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: isDepthMode ? Colors.blue : Colors.grey,
-                  ),
-                  child: const Text('Depth'),
-                ),
-                const SizedBox(height: 10),
-                ElevatedButton(
-                  onPressed: _resetSpherePosition,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green,
-                  ),
-                  child: const Text('Reset Position'),
                 ),
               ],
             ),
@@ -150,22 +124,6 @@ class _MyHomePageState extends State<MyHomePage> {
     arkitController.add(sphereNode!);
   }
 
-  void _resetSpherePosition() async {
-    final cameraTransform = await arkitController.pointOfViewTransform();
-    if (cameraTransform != null && sphereNode != null) {
-      final offset = vector.Vector3(0, 0, -0.5);
-      final newPosition = cameraTransform.transform3(offset);
-      setState(() {
-        spherePosition = offset;
-        sphereNode!.position = newPosition;
-        arkitController.update(
-          sphereNode!.name,
-          node: sphereNode!,
-        );
-      });
-    }
-  }
-
   void _onScaleStart(ScaleStartDetails details) {
     _previousScale = sphereRadius;
   }
@@ -179,45 +137,27 @@ class _MyHomePageState extends State<MyHomePage> {
     });
   }
 
-  void _onPanStart(DragStartDetails details) {}
+  void _onPanStart(DragStartDetails details) {
+    lastPanPosition = details.localPosition;
+  }
 
   void _onPanUpdate(DragUpdateDetails details) {
-    final delta = details.delta;
-    setState(() {
+    if (lastPanPosition != null) {
+      final delta = details.localPosition - lastPanPosition!;
       spherePosition += vector.Vector3(delta.dx * 0.001, -delta.dy * 0.001, 0);
-      sphereNode!.position = spherePosition;
-      arkitController.update(
-        sphereNode!.name,
-        node: sphereNode!,
-      );
-    });
-  }
-
-  void _onPanEnd(DragEndDetails details) {}
-
-  void _onDepthStart(DragStartDetails details) {
-    _previousDepth = details.localPosition.dy;
-  }
-
-  void _onDepthUpdate(DragUpdateDetails details) async {
-    final cameraTransform = await arkitController.pointOfViewTransform();
-    if (cameraTransform != null && sphereNode != null) {
-      final delta = _previousDepth - details.localPosition.dy;
-      _previousDepth = details.localPosition.dy;
-      final forward = vector.Vector3(
-        -cameraTransform.getColumn(2).x,
-        -cameraTransform.getColumn(2).y,
-        -cameraTransform.getColumn(2).z,
-      );
       setState(() {
-        spherePosition += forward * (delta * 0.01);
-        sphereNode!.position = cameraTransform.transform3(spherePosition);
+        sphereNode!.position = spherePosition;
         arkitController.update(
           sphereNode!.name,
           node: sphereNode!,
         );
       });
+      lastPanPosition = details.localPosition;
     }
+  }
+
+  void _onPanEnd(DragEndDetails details) {
+    lastPanPosition = null;
   }
 
   void _updateSphereGeometry() {
@@ -226,7 +166,7 @@ class _MyHomePageState extends State<MyHomePage> {
       final newSphere = ARKitSphere(radius: sphereRadius, materials: materials);
       final newNode = ARKitNode(
         geometry: newSphere,
-        position: spherePosition,
+        position: sphereNode!.position,
       );
       arkitController.remove(sphereNode!.name);
       sphereNode = newNode;
